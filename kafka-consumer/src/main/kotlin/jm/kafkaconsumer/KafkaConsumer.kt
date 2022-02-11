@@ -1,6 +1,8 @@
 package jm.kafkaconsumer
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import kotlinx.coroutines.*
+import mu.KotlinLogging
 import org.apache.kafka.clients.consumer.ConsumerConfig.*
 import org.apache.kafka.common.serialization.StringDeserializer
 import org.apache.kafka.common.serialization.StringSerializer
@@ -15,6 +17,7 @@ import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory
 import org.springframework.kafka.core.ConsumerFactory
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory
 import org.springframework.stereotype.Component
+import java.util.UUID.randomUUID
 
 @SpringBootApplication
 class KafkaConsumer
@@ -34,7 +37,8 @@ class ConsumerConfig {
         val props = mapOf(BOOTSTRAP_SERVERS_CONFIG to bootstrapServers,
             GROUP_ID_CONFIG to StringSerializer::class.java,
             KEY_DESERIALIZER_CLASS_CONFIG to StringDeserializer::class.java,
-            VALUE_DESERIALIZER_CLASS_CONFIG to StringDeserializer::class.java
+            VALUE_DESERIALIZER_CLASS_CONFIG to StringDeserializer::class.java,
+            MAX_POLL_RECORDS_CONFIG to 10
         )
         return DefaultKafkaConsumerFactory(props)
     }
@@ -44,18 +48,38 @@ class ConsumerConfig {
 
         val factory = ConcurrentKafkaListenerContainerFactory<String, String>()
         factory.consumerFactory = consumerFactory("spring")
+        factory.isBatchListener = true
         return factory
     }
 }
 
+data class Data(
+    val message: String
+)
 
 @Component
 class KafkaConsumerService(
     val mapper: ObjectMapper
 ) {
 
+    private val logger = KotlinLogging.logger {  }
+
     @KafkaListener(topics = ["test-topic"], groupId = "test-consumer-group")
-    fun listener(payload: String) {
-            println(payload)
+    fun listener(payload: List<String>) = runBlocking {
+        val deferreds: List<Deferred<Int>> = (1..3).map {
+            async {
+                delay(1000L * it)
+                println("Loading $it")
+                it
+            }
+        }
+        val sum = deferreds.awaitAll().sum()
+        println("$sum")
+    }
+
+    suspend fun loadData(data: String): String {
+        logger.info { "Processed $data" }
+        delay(5)
+        return data
     }
 }
