@@ -7,7 +7,7 @@ services:
     ports:
       - "2181:2181"
 
-  kafka-0:
+  kafka:
     image: wurstmeister/kafka
     restart: always
     ports:

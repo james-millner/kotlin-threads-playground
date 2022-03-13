@@ -16,8 +16,9 @@ import org.springframework.kafka.annotation.KafkaListener
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory
 import org.springframework.kafka.core.ConsumerFactory
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory
+import org.springframework.kafka.support.KafkaHeaders
+import org.springframework.messaging.handler.annotation.Header
 import org.springframework.stereotype.Component
-import java.util.UUID.randomUUID
 
 @SpringBootApplication
 class KafkaConsumer
@@ -62,24 +63,34 @@ class KafkaConsumerService(
     val mapper: ObjectMapper
 ) {
 
-    private val logger = KotlinLogging.logger {  }
+    private val logger = KotlinLogging.logger { }
 
     @KafkaListener(topics = ["test-topic"], groupId = "test-consumer-group")
-    fun listener(payload: List<String>) = runBlocking {
-        val deferreds: List<Deferred<Int>> = (1..3).map {
-            async {
-                delay(1000L * it)
-                println("Loading $it")
-                it
-            }
-        }
-        val sum = deferreds.awaitAll().sum()
-        println("$sum")
+    fun listener(
+        payload: List<String>,
+        @Header(KafkaHeaders.RECEIVED_PARTITION_ID) partition: Int) {
+        coroutineProcessing(payload, partition)
     }
 
-    suspend fun loadData(data: String): String {
-        logger.info { "Processed $data" }
-        delay(5)
-        return data
+    private fun noneCoroutineProcessing(payload: List<String>) {
+        payload.forEach {
+            logger.info { "Message: $it" }
+
+        }
+
+        logger.info { "Consumed ${payload.size} from Kafka" }
+    }
+
+    private fun coroutineProcessing(payload: List<String>, partition: Int) {
+        runBlocking {
+            payload.forEach {
+                launch(CoroutineName("kafka-consumer")) {
+                    delay(2000L)
+                    logger.info { "Message (Partition = $partition): $it" }
+                }
+            }
+
+            logger.info { "Consumed ${payload.size} from Kafka" }
+        }
     }
 }
